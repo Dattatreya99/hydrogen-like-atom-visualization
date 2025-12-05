@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hydrogen Orbital Visualization</title>
+    <script src="https://cdn.plot.ly/plotly-2.12.1.min.js"></script>
+    <style>
+        :root {
+            --dark-bg-1: #111;
+            --dark-bg-2: #222;
+            --dark-border: #444;
+            --text-light: #eee;
+            --text-medium: #bbb;
+            --accent-blue: #0d6efd;
+            --accent-blue-hover: #0a58ca;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex; margin: 0; background: var(--dark-bg-1); color: var(--text-light); height: 100vh;
+        }
+        #controls {
+            width: 350px; min-width: 300px; padding: 20px; background: var(--dark-bg-2); border-right: 1px solid var(--dark-border);
+            overflow-y: auto; display: flex; flex-direction: column;
+        }
+        #controls h2 { margin-top: 0; color: var(--text-light); }
+        #controls h3 { margin-top: 20px; border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;}
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; font-weight: 600; margin-bottom: 5px; color: var(--text-medium); }
+        .control-group input, .control-group select {
+            width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--dark-border); border-radius: 4px;
+            background: var(--dark-bg-1); color: var(--text-light);
+        }
+        button {
+            width: 100%; padding: 10px; font-size: 15px; font-weight: 600;
+            background: var(--accent-blue); color: white; border: none; border-radius: 4px;
+            cursor: pointer; margin-top: 8px;
+        }
+        button:hover { background: var(--accent-blue-hover); }
+        button.advanced { background-color: #5a6268; }
+        button.advanced:hover { background-color: #43484e; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+
+        #viewer {
+            flex-grow: 1; display: flex; flex-direction: column; position: relative;
+        }
+        #plot-div {
+            width: 100%; flex-grow: 1;
+        }
+        #info-div {
+            height: 100%; overflow-y: auto; padding: 20px; box-sizing: border-box;
+            background: var(--dark-bg-2); font-family: 'Courier New', monospace; font-size: 0.9em;
+            color: var(--text-light);
+        }
+        #loading-indicator {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(30, 30, 30, 0.8);
+            display: none; align-items: center; justify-content: center;
+            font-size: 2em; color: var(--text-light); z-index: 10;
+        }
+        #error-message {
+            display: none; background: #ffdddd; border: 1px solid #ff0000;
+            color: #d00; padding: 15px; margin-top: 15px; border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <h2>Orbital Controls</h2>
+
+        <div class="control-group">
+            <label for="Z-input">Atomic Number (Z)</label>
+            <input type="number" id="Z-input" value="1" min="1">
+        </div>
+        <div class="control-group">
+            <label for="n-input">Principal (n)</label>
+            <input type="number" id="n-input" value="3" min="1">
+        </div>
+        <div class="control-group">
+            <label for="l-input">Angular (l)</label>
+            <input type="number" id="l-input" value="2" min="0">
+        </div>
+        <div class="control-group">
+            <label for="m-input">Magnetic (m)</label>
+            <input type="number" id="m-input" value="1" min="-10">
+        </div>
+
+        <h3>Visualization Settings</h3>
+
+        <div class="control-group">
+            <label>Quality (Resolution)</label>
+            <select id="quality-select">
+                <option value="40">Low (3D=40³)</option>
+                <option value="60" selected>Medium (3D=60³)</option>
+                <option value="80">High (3D=80³)</option>
+                <option value="100">Ultra (3D=100³)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="rmax-input">Max Radius (r_max)</label>
+            <input type="number" id="rmax-input" value="20" min="1">
+        </div>
+
+        <div class="control-group">
+            <label>Real Harmonics (for Phase)</label>
+            <select id="real-select">
+                <option value="true" selected>Yes (Real, +/- Sign)</option>
+                <option value="false">No (Complex, Phase Angle)</option>
+            </select>
+        </div>
+
+        <h3>Generate Plot</h3>
+
+        <button id="btn-info">Show Orbital Info</button>
+        <button id="btn-radial-1d">Plot Radial Dist. (1D)</button>
+        <button id="btn-slice-2d">Plot 2D Slice</button>
+        <button id="btn-angular-node-map" class="advanced">Plot Angular Node Map (2D)</button>
+
+        <h3 style="color: #42a5f5;">3D Phase-Colored "Cloud" Plots</h3>
+        <button id="btn-total-3d" style="background-color: #28a745;"><b>Plot Total |Ψ| (3D)</b></button>
+        <button id="btn-radial-3d" style="background-color: #17a2b8;"><b>Plot Radial |R|² (3D)</b></button>
+        <button id="btn-angular-3d" style="background-color: #ffc107; color: #333;"><b>Plot Angular |Y| (3D)</b></button>
+
+        <h3>Advanced Features</h3>
+        <button id="btn-energy-levels" class="advanced">Plot Energy Levels</button>
+        <button id="btn-splitting-diagram" class="advanced">Plot Splitting Diagram (for n)</button>
+        <button id="btn-compare-orbitals" class="advanced">Compare Orbitals (2D)</button>
+        <button id="btn-superposition" class="advanced">Superposition Animation</button>
+        <button id="btn-normalize" class="danger">Check Normalization</button>
+
+        <div id="error-message"></div>
+    </div>
+
+    <div id="viewer">
+        <div id="plot-div"></div>
+        <div id="info-div" style="display: none;"></div>
+        <div id="loading-indicator">Calculating...</div>
+    </div>
+
+    <script>
+        const loading = document.getElementById('loading-indicator');
+        const errorMsg = document.getElementById('error-message');
+        const plotDiv = document.getElementById('plot-div');
+        const infoDiv = document.getElementById('info-div');
+
+        const layout_2d_base = {
+            margin: { l: 40, r: 10, b: 40, t: 40 },
+            hovermode: 'closest',
+            template: 'plotly_dark'
+        };
+
+        function getParams() {
+            const quality_3d = parseInt(document.getElementById('quality-select').value);
+            return {
+                n: document.getElementById('n-input').value,
+                l: document.getElementById('l-input').value,
+                m: document.getElementById('m-input').value,
+                Z: document.getElementById('Z-input').value,
+                r_max: document.getElementById('rmax-input').value,
+                real: document.getElementById('real-select').value,
+                res_3d: quality_3d,
+                res_2d: quality_3d * 3,
+                res_1d: quality_3d * 50
+            };
+        }
+
+        function showView(view) {
+            plotDiv.style.display = (view === 'plot') ? 'block' : 'none';
+            infoDiv.style.display = (view === 'info') ? 'block' : 'none';
+            Plotly.purge(plotDiv);
+        }
+
+        async function fetchData(endpoint, options = {}) {
+            loading.style.display = 'flex';
+            errorMsg.style.display = 'none';
+            try {
+                const response = await fetch(`http://127.0.0.1:5000/api/${endpoint}`, options);
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(`Server Error: ${data.error} \n ${data.trace || ''}`);
+                }
+                return data;
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                errorMsg.textContent = error.message;
+                errorMsg.style.display = 'block';
+                return null;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function plot_3d_surface(data, title) {
+            showView('plot');
+            
+            const trace = {
+                type: 'surface',
+                x: data.x,
+                y: data.y,
+                z: data.z,
+                surfacecolor: data.surfacecolor,
+                colorscale: data.colorscale,
+                cmin: data.cmin,
+                cmax: data.cmax,
+                showscale: true,
+                colorbar: { title: data.colorbar_title, thickness: 15 },
+                lighting: {
+                    ambient: 0.4,
+                    diffuse: 0.8,
+                    specular: 0.5,
+                    roughness: 0.5
+                },
+                lightposition: { x: 100, y: 200, z: 50 }
+            };
+
+            const layout = {
+                title: title,
+                template: 'plotly_dark',
+                scene: {
+                    aspectmode: 'data', 
+                    xaxis: { title: 'x', backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                    yaxis: { title: 'y', backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                    zaxis: { title: 'z', backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                },
+                margin: { l: 0, r: 0, b: 0, t: 40 }
+            };
+
+            Plotly.newPlot(plotDiv, [trace], layout);
+        }
+
+        function plot_3d_cloud(data, title, r_max) {
+            if (!data || !data.meshes || data.meshes.length === 0) {
+                errorMsg.textContent = "No 3D mesh data was generated by the server (or the orbital is zero everywhere).";
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            showView('plot');
+            const traces = [];
+
+            const cmin = data.cmin;
+            const cmax = data.cmax;
+            const colorscale = data.colorscale;
+            const colorbar_title = data.colorbar_title;
+
+            for (let i = 0; i < data.meshes.length; i++) {
+                const mesh = data.meshes[i];
+                traces.push({
+                    type: 'mesh3d',
+                    x: mesh.x, y: mesh.y, z: mesh.z,
+                    i: mesh.i, j: mesh.j, k: mesh.k,
+                    opacity: mesh.opacity,
+                    intensity: mesh.intensity,
+                    colorscale: colorscale,
+                    cmin: cmin,
+                    cmax: cmax,
+                    showscale: (i === 0),
+                    colorbar: { title: colorbar_title, thickness: 15 }
+                });
+            }
+
+            traces.reverse();
+
+            const r = parseFloat(r_max);
+            const dynamic_layout_3d = {
+                title: title,
+                template: 'plotly_dark',
+                scene: {
+                    xaxis: { title: 'x (a₀)', range: [-r, r], backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                    yaxis: { title: 'y (a₀)', range: [-r, r], backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                    zaxis: { title: 'z (a₀)', range: [-r, r], backgroundcolor: "rgb(17,17,17)", gridcolor: "rgb(70,70,70)"},
+                    aspectmode: 'cube'
+                },
+                margin: { l: 0, r: 0, b: 0, t: 40 }
+            };
+
+            Plotly.newPlot(plotDiv, traces, dynamic_layout_3d);
+        }
+
+        document.getElementById('btn-info').onclick = async () => {
+            const params = new URLSearchParams(getParams());
+            params.append('fs', 'true');
+            const data = await fetchData(`orbital-info?${params.toString()}`);
+            if (!data) return;
+
+            showView('info');
+            infoDiv.innerHTML = `
+                <h2 style="margin-top:0;">Orbital Info: ${data.label} (Z=${data.Z})</h2>
+                
+                <h3 style="border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;">Quantum Numbers</h3>
+                <ul style="list-style: none; padding-left: 10px; margin-top: 10px;">
+                    <li><strong>Principal (n):</strong> ${data.n}</li>
+                    <li><strong>Angular (l):</strong> ${data.l}</li>
+                    <li><strong>Magnetic (m):</strong> ${data.m}</li>
+                </ul>
+
+                <h3 style="border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;">Energy (Bohr)</h3>
+                <ul style="list-style: none; padding-left: 10px; margin-top: 10px;">
+                    <li>${data.energy_ev} eV</li>
+                    <li>${data.energy_hartree} Hartree</li>
+                </ul>
+
+                <h3 style="border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;">Node Structure</h3>
+                <ul style="list-style: none; padding-left: 10px; margin-top: 10px;">
+                    <li><strong>Radial Nodes:</strong> ${data.nodes_radial}</li>
+                    <li><strong>Angular Nodes:</strong> ${data.nodes_angular}</li>
+                    <li><strong>Total Nodes:</strong> ${data.nodes_total}</li>
+                    ${data.node_positions ? `<li><strong>Node Positions:</strong> ${data.node_positions.join(', ')}</li>` : ''}
+                </ul>
+
+                <h3 style="border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;">Expectation Values</h3>
+                <ul style="list-style: none; padding-left: 10px; margin-top: 10px;">
+                    <li><strong>⟨r⟩:</strong> ${data.exp_r}</li>
+                    <li><strong>⟨r²⟩:</strong> ${data.exp_r2}</li>
+                    <li><strong>⟨1/r⟩:</strong> ${data.exp_r_inv}</li>
+                </ul>
+
+                <h3 style="border-bottom: 1px solid var(--dark-border); padding-bottom: 5px;">Fine Structure</h3>
+                <ul style="list-style: none; padding-left: 10px; margin-top: 10px; margin-bottom: 0;">
+                    ${data.fs ? data.fs.map(f => `<li>${f}</li>`).join('') : '<li>Not applicable or requested</li>'}
+                </ul>
+            `;
+        };
+
+        document.getElementById('btn-normalize').onclick = async () => {
+            if (!confirm("This runs a Monte Carlo check. It might take a few seconds. Continue?")) return;
+            const params = new URLSearchParams(getParams());
+            const data = await fetchData(`check-normalization?${params.toString()}`);
+            if (!data) return;
+            const result_msg = data.passed
+                ? "✓ Normalization check passed!"
+                : "WARNING: Large deviation from unity.";
+            alert(`Normalization Check:\n\nIntegral Value = ${data.integral_value.toFixed(6)}\n(Should be ≈ 1.0)\n\n${result_msg}`);
+        };
+
+        document.getElementById('btn-radial-1d').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams({ n:p.n, l:p.l, Z:p.Z, r_max:p.r_max, res:p.res_1d });
+            const data = await fetchData(`radial-distribution?${params.toString()}`);
+            if (!data) return;
+
+            showView('plot');
+            const trace1 = { x: data.r, y: data.P_r, mode: 'lines', name: 'P(r) = r²|R|²' };
+            const trace2 = { x: data.r, y: data.R_r, mode: 'lines', name: 'R(r)', yaxis: 'y2', line: {dash: 'dot'} };
+            const nodes = { x: data.nodes, y: new Array(data.nodes.length).fill(0), mode: 'markers', name: 'Nodes' };
+
+            const layout = { ...layout_2d_base,
+                title: 'Radial Distribution', xaxis: { title: 'r (a₀)' },
+                yaxis: { title: 'P(r)' }, yaxis2: { title: 'R(r)', overlaying: 'y', side: 'right' },
+                shapes: [
+                    {type: 'line', x0: data.exp_r, x1: data.exp_r, y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: 'orange'}},
+                    {type: 'line', x0: data.r_most_probable, x1: data.r_most_probable, y0: 0, y1: 1, yref: 'paper', line: {dash: 'dot', color: 'green'}}
+                ],
+                annotations: [
+                    {x: data.exp_r, y: 0.95, yref: 'paper', text: '<b>⟨r⟩</b> (mean)', showarrow: false, font: {color: 'orange'}},
+                    {x: data.r_most_probable, y: 0.9, yref: 'paper', text: '<b>r<sub>mp</sub></b> (most probable)', showarrow: false, font: {color: 'green'}}
+                ]
+            };
+            Plotly.newPlot(plotDiv, [trace1, trace2, nodes], layout);
+        };
+
+        document.getElementById('btn-energy-levels').onclick = async () => {
+            const p = getParams();
+            const n_max_str = prompt("Enter max n to display:", "5");
+            if (!n_max_str) return;
+            const n_max = parseInt(n_max_str);
+
+            const params = new URLSearchParams({ Z:p.Z, n_max: n_max });
+            const data = await fetchData(`energy-levels?${params.toString()}`);
+            if (!data) return;
+
+            showView('plot');
+            let traces = [];
+            const l_vals = [];
+            for (const level of data.levels) {
+                traces.push({
+                    x: [level.l - 0.4, level.l + 0.4], y: [level.E_eV, level.E_eV],
+                    mode: 'lines', line: {width: 4}, name: `n=${level.n}`, legendgroup: `n=${level.n}`,
+                    showlegend: (level.l === 0)
+                });
+                traces.push({
+                    x: [level.l], y: [level.E_eV], mode: 'text', text: [level.label], textposition: 'top center'
+                });
+                l_vals.push(level.l);
+            }
+            const series_colors = {"Lyman": "#ff6666", "Balmer": "#66ff66", "Paschen": "#6666ff", "Brackett": "#ff66ff", "Pfund": "#ffff66"};
+            for (const trans of data.transitions) {
+                traces.push({
+                    x: [trans.x_start, trans.x_end], y: [trans.y_start, trans.y_end],
+                    mode: 'lines', line: {color: series_colors[trans.series], width: 1, dash: 'dash'},
+                    name: trans.series, legendgroup: trans.series,
+                    showlegend: !traces.some(t => t.legendgroup === trans.series)
+                });
+            }
+
+            const layout = { ...layout_2d_base,
+                title: `Energy Levels & Transitions (Z=${p.Z})`,
+                xaxis: { title: 'Angular Momentum l', tickvals: [...new Set(l_vals)] },
+                yaxis: { title: 'Energy (eV)' }, showlegend: true
+            };
+            Plotly.newPlot(plotDiv, traces, layout);
+        };
+
+        document.getElementById('btn-slice-2d').onclick = async () => {
+            const plane = prompt("Enter plane (xy, yz, xz):", "xz");
+            if (!plane) return;
+
+            const p = getParams();
+            const params = new URLSearchParams(p);
+            params.set('res', p.res_2d);
+            params.append('plane', plane);
+            params.append('pos', 0.0);
+            const data = await fetchData(`2d-slice?${params.toString()}`);
+            if (!data) return;
+
+            showView('plot');
+            const trace = {
+                type: 'heatmap', z: data.z_data, x: data.x_coords, y: data.y_coords,
+                colorscale: 'Viridis', colorbar: { title: '|Ψ|²' }
+            };
+            const layout = { ...layout_2d_base,
+                title: `2D Slice |Ψ|² on ${plane}-plane`,
+                xaxis: { title: data.x_label },
+                yaxis: { title: data.y_label, scaleanchor: 'x', scaleratio: 1 }
+            };
+            Plotly.newPlot(plotDiv, [trace], layout);
+        };
+
+        document.getElementById('btn-angular-node-map').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams({ l: p.l, m: p.m, res: p.res_2d, real: p.real });
+            const data = await fetchData(`angular-node-map?${params.toString()}`);
+            if (!data) return;
+
+            showView('plot');
+            const trace = {
+                type: 'heatmap', z: data.z_data, x: data.x_coords, y: data.y_coords,
+                colorscale: 'Viridis', colorbar: { title: '|Y|²' }
+            };
+            const layout = { ...layout_2d_base,
+                title: `Angular Node Map |Y_lm|²`,
+                xaxis: { title: 'Azimuthal Angle φ (radians)', tickvals: [0, Math.PI/2, Math.PI, 3*Math.PI/2, 2*Math.PI], ticktext: ['0', 'π/2', 'π', '3π/2', '2π'] },
+                yaxis: { title: 'Polar Angle θ (radians)', tickvals: [0, Math.PI/2, Math.PI], ticktext: ['0', 'π/2', 'π'] }
+            };
+            Plotly.newPlot(plotDiv, [trace], layout);
+        };
+
+        document.getElementById('btn-total-3d').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams(p);
+            params.set('res', p.res_3d);
+            const data = await fetchData(`total-isosurface?${params.toString()}`);
+            plot_3d_cloud(data, `Total 3D "Cloud" - Phase Colored`, p.r_max);
+        };
+
+        document.getElementById('btn-radial-3d').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams({ n:p.n, l:p.l, Z:p.Z, r_max:p.r_max, res:p.res_3d });
+            const data = await fetchData(`radial-isosurface?${params.toString()}`);
+            plot_3d_cloud(data, `Radial 3D "Cloud" |R_nl|²`, p.r_max);
+        };
+
+        document.getElementById('btn-angular-3d').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams({ l:p.l, m:p.m, res:p.res_3d, real:p.real });
+            const data = await fetchData(`angular-surface-plot?${params.toString()}`);
+            if (!data) return;
+            
+            plot_3d_surface(data, `Angular Plot |Y|² - Phase Colored`);
+        };
+
+        document.getElementById('btn-splitting-diagram').onclick = async () => {
+            const p = getParams();
+            const params = new URLSearchParams({ n: p.n, Z: p.Z });
+            const data = await fetchData(`splitting-diagram?${params.toString()}`);
+            if (!data) return;
+
+            showView('plot');
+            const layout = { ...layout_2d_base,
+                title: `Hierarchical Energy Splitting for n=${p.n} (Z=${p.Z})`,
+                xaxis: { title: "Correction Level", type: 'category', tickangle: -15, tickvals: data.categories },
+                yaxis: { title: 'Energy (eV)', tickformat: ".6f", hoverformat: ".12f" },
+                showlegend: true, legend: { title: "State (n l<sub>j</sub> F)"}
+            };
+            Plotly.newPlot(plotDiv, data.traces, layout);
+        };
+
+        document.getElementById('btn-compare-orbitals').onclick = async () => {
+            const p = getParams();
+            const orbitals = [];
+            while(true) {
+                const line = prompt(`Enter orbital ${orbitals.length + 1} (n l m) or leave empty to finish:`, "");
+                if (line === null || line.trim() === "") break;
+                try {
+                    const [n, l, m] = line.trim().split(/\s+/).map(Number);
+                    if (l >= n || Math.abs(m) > l) {
+                        alert("Invalid quantum numbers! (n > l and |m| <= l). Try again.");
+                    } else {
+                        orbitals.push([n, l, m]);
+                    }
+                } catch (e) {
+                    alert("Invalid format. Please enter as: n l m");
+                }
+            }
+            if (orbitals.length === 0) return;
+
+            const post_data = {
+                orbitals: orbitals, Z: p.Z, r_max: p.r_max, res: p.res_2d
+            };
+            const data = await fetchData('compare-orbitals', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(post_data)
+            });
+            if (!data) return;
+
+            showView('plot');
+            const traces = [];
+            const layout = { ...layout_2d_base,
+                title: `Orbital Comparison (xz-plane, Z=${p.Z})`,
+                showlegend: false,
+                annotations: []
+            };
+
+            const n_cols = 3;
+            const n_rows = Math.ceil(orbitals.length / n_cols);
+            const h_spacing = 0.05 / n_cols;
+            const v_spacing = 0.1;
+
+            data.plots.forEach((plot, i) => {
+                const row_idx = Math.floor(i / n_cols);
+                const col_idx = (i % n_cols);
+                
+                const x_start = (col_idx / n_cols) + h_spacing;
+                const x_end = ((col_idx + 1) / n_cols) - h_spacing;
+                
+                const y_start = 1.0 - ((row_idx + 1) / n_rows) + (v_spacing / n_rows);
+                const y_end = 1.0 - (row_idx / n_rows) - (v_spacing / n_rows);
+
+                const domain = { x: [x_start, x_end], y: [y_start, y_end] };
+                const subplot_id = (i === 0) ? "" : i + 1;
+
+                traces.push({
+                    type: 'heatmap', z: plot.z_data, x: data.x_coords, y: data.y_coords,
+                    colorscale: 'Viridis', zmin: 0, zmax: data.max_z,
+                    showscale: (i === 0),
+                    colorbar: { title: '|Ψ|²' },
+                    xaxis: `x${subplot_id}`,
+                    yaxis: `y${subplot_id}`
+                });
+                
+                layout[`xaxis${subplot_id}`] = { domain: domain.x, title: '', showticklabels: false };
+                layout[`yaxis${subplot_id}`] = { domain: domain.y, title: '', scaleanchor: `x${subplot_id}`, scaleratio: 1, showticklabels: false };
+                
+                layout.annotations.push({
+                    text: plot.title, showarrow: false,
+                    xref: 'paper', yref: 'paper',
+                    x: (domain.x[0] + domain.x[1]) / 2,
+                    y: domain.y[1] + 0.01,
+                    yanchor: 'bottom',
+                    font: { size: 14 }
+                });
+            });
+
+            Plotly.newPlot(plotDiv, traces, layout);
+        };
+
+        document.getElementById('btn-superposition').onclick = async () => {
+            const p = getParams();
+            const states = [];
+            while(true) {
+                const line = prompt(`State ${states.length + 1} (e.g., 2 1 1 1 0) or leave empty to finish:\nFormat: n l m [real_coeff] [imag_coeff]`, "");
+                if (line === null || line.trim() === "") break;
+                try {
+                    const parts = line.trim().split(/\s+/).map(Number);
+                    const [n, l, m] = parts.slice(0, 3);
+                    const real_c = parts[3] || 1.0;
+                    const imag_c = parts[4] || 0.0;
+                    if (l >= n || Math.abs(m) > l) {
+                        alert("Invalid quantum numbers! (n > l and |m| <= l). Try again.");
+                    } else {
+                        states.push([n, l, m, real_c, imag_c]);
+                    }
+                } catch (e) {
+                    alert("Invalid format. Please enter as: n l m [real] [imag]");
+                }
+            }
+            if (states.length < 2) {
+                alert("Superposition requires at least two states.");
+                return;
+            }
+
+            let plane = prompt("Enter plane for animation (xy, yz, xz):", "xz");
+            if (!plane || !['xy', 'yz', 'xz'].includes(plane.toLowerCase())) {
+                alert("Invalid plane. Defaulting to 'xz'.");
+                plane = 'xz';
+            }
+
+            const num_frames = parseInt(prompt("Enter number of frames:", "50"));
+            if (!num_frames) return;
+
+            const post_data = {
+                states: states, Z: p.Z, r_max: p.r_max, res: p.res_2d, num_frames: num_frames,
+                plane: plane
+            };
+            loading.textContent = "Calculating animation frames... this may take a while.";
+            let data;
+            try {
+                data = await fetchData('superposition-animation', {
+                    method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(post_data)
+            });
+            if (!data) return;
+
+            showView('plot');
+            const frames = [];
+            const sliderSteps = [];
+            for (let i = 0; i < data.times.length; i++) {
+                frames.push({
+                    name: `t=${data.times[i].toFixed(2)}`,
+                    data: [{ z: data.frames[i] }]
+                });
+                sliderSteps.push({
+                    label: data.times[i].toFixed(2),
+                    method: 'animate',
+                    args: [[`t=${data.times[i].toFixed(2)}`], {
+                        mode: 'immediate',
+                        frame: { redraw: true, duration: 100 },
+                        transition: { duration: 0 }
+                    }]
+                });
+            }
+
+            const layout = { ...layout_2d_base,
+                title: `Superposition on ${plane}-plane (T = ${data.period.toFixed(2)} a.u.)`,
+                xaxis: { title: data.x_label },
+                yaxis: { title: data.y_label, scaleanchor: 'x', scaleratio: 1 },
+                updatemenus: [{
+                    x: 0, y: 0, yanchor: 'top', xanchor: 'left',
+                    showactive: false, direction: 'left', type: 'buttons',
+                    pad: {t: 87, r: 10},
+                    buttons: [
+                        { method: 'animate', args: [null, { frame: { redraw: true, duration: 100 }, fromcurrent: true, transition: { duration: 0 } }], label: 'Play' },
+                        { method: 'animate', args: [[null], { frame: { redraw: false, duration: 0 }, mode: 'immediate', transition: { duration: 0 } }], label: 'Pause' }
+                    ]
+                }],
+                sliders: [{
+                    active: 0, yanchor: 'top', xanchor: 'left',
+                    currentvalue: { font: {size: 16}, prefix: 'Time: ', visible: true, xanchor: 'right' },
+                    pad: {b: 10, t: 50},
+                    len: 0.9, x: 0.1, y: 0,
+                    steps: sliderSteps
+                }]
+            };
+
+            const trace = {
+                type: 'heatmap', z: data.frames[0], x: data.x_coords, y: data.y_coords,
+                colorscale: 'Viridis', zmin: 0, zmax: data.z_max,
+                colorbar: { title: '|Ψ(t)|²' }
+            };
+
+            Plotly.newPlot(plotDiv, [trace], layout).then(() => Plotly.addFrames(plotDiv, frames));
+            } finally {
+                loading.textContent = "Calculating...";
+            }
+            alert("Animation generated successfully! Use the slider or play button to view.");
+        };
+
+        document.getElementById('n-input').onchange = () => {
+            const n = parseInt(document.getElementById('n-input').value) || 1;
+            const Z = parseInt(document.getElementById('Z-input').value) || 1;
+
+            const r_max = n * (n + 15) / Z;
+            document.getElementById('rmax-input').value = r_max.toFixed(1);
+
+            const l_input = document.getElementById('l-input');
+            l_input.max = n - 1;
+            if (parseInt(l_input.value) >= n) {
+                l_input.value = n - 1;
+            }
+            l_input.onchange();
+        };
+        document.getElementById('Z-input').onchange = document.getElementById('n-input').onchange;
+
+        document.getElementById('l-input').onchange = () => {
+            const l = parseInt(document.getElementById('l-input').value) || 0;
+            const m_input = document.getElementById('m-input');
+            m_input.max = l;
+            m_input.min = -l;
+            if (Math.abs(parseInt(m_input.value)) > l) {
+                m_input.value = 0;
+            }
+        };
+
+        window.onresize = function() {
+            if (plotDiv.style.display !== 'none') {
+                Plotly.Plots.resize(plotDiv);
+            }
+        };
+
+        document.getElementById('n-input').onchange();
+
+    </script>
+</body>
+</html>
