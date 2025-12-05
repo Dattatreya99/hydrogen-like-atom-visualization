@@ -238,7 +238,7 @@ If you use this tool in your research, please cite:
   author = {Dattatreya Mangipudi},
   title = {Hydrogen-Like Atom Orbital Visualization Toolkit},
   year = {2025},
-  url = {https://github.com/yourusername/hydrogen-orbital-viz}
+  url = {https://github.com/Dattatreya99/hydrogen-like-atom-visualization}
 }
 ```
 
@@ -255,7 +255,7 @@ Built with:
 - Plotly for interactive visualizations
 - Flask for web API
 - scikit-image for isosurface generation
-- CuPy for GPU acceleration (optional)
+- CuPy for GPU acceleration
 
 ---
 
